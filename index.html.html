@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>InvestIQ — An AI-Powered Investment Analysis System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <div id="loading-screen">
+    <div class="loading-logo">✦ InvestIQ</div>
+    <div class="loading-orb">
+      <svg width="80" height="80" viewBox="0 0 80 80">
+        <circle class="track" cx="40" cy="40" r="32" />
+      </svg>
+      <div style="position:absolute;inset:0;"><svg width="80" height="80" viewBox="0 0 80 80">
+          <circle class="fill" cx="40" cy="40" r="32"
+            style="stroke:var(--gold);fill:none;stroke-width:2;stroke-linecap:round;stroke-dasharray:201;stroke-dashoffset:201;"
+            id="loading-arc" />
+        </svg></div>
+      <div class="orb-center"></div>
+    </div>
+    <div class="wisdom-container">
+      <div class="wisdom-label">While InvestIQ Processing…</div>
+      <div class="wisdom-text" id="wisdom-text"></div>
+      <div class="wisdom-author" id="wisdom-author"></div>
+    </div>
+  </div>
+
+  <div id="main-ui">
+    <header>
+      <div class="container">
+        <div class="header-inner">
+          <div class="logo">
+            <div class="logo-mark">I</div>
+            <div>
+              <div class="logo-text">InvestIQ</div>
+              <div class="logo-sub">An AI-Powered Investment Analysis System for Indian Markets</div>
+            </div>
+          </div>
+          <div class="header-badge">Powered by AI</div>
+        </div>
+      </div>
+    </header>
+    <div class="container">
+      <div class="hero">
+        <div class="hero-eyebrow">Institutional-Grade Research</div>
+        <h1>Fully transparent, data-backed<br>investment reports in <em>seconds</em>.</h1>
+        <p>InvestIQ runs your stock through three world-class investor personas — Buffett, Dalio, and Lynch. Calculated
+          live using established formulas (DCF, ROE, Margin of Safety). No hallucinated figures, built specifically for
+          the Indian market.</p>
+        <div class="input-card">
+          <div class="input-label">Stock Ticker</div>
+          <div class="input-row">
+            <input type="text" class="ticker-input" id="ticker-input" placeholder="e.g. RELIANCE.NS, TCS.NS, INFY.NS"
+              maxlength="20">
+            <button class="analyze-btn" onclick="startAnalysis()">Analyze →</button>
+          </div>
+          <div class="error-msg" id="error-msg"></div>
+          <div class="input-hint">Try <span>RELIANCE.NS</span> · <span>TCS.NS</span> · <span>INFY.NS</span> or any
+            BSE/NSE ticker</div>
+        </div>
+      </div>
+      <div id="report"></div>
+    </div>
+  </div>
+
+  <script>
+    const wisdoms = [
+      { t: "The stock market is a device for transferring money from the impatient to the patient.", a: "— Warren Buffett" },
+      { t: "Risk comes from not knowing what you are doing.", a: "— Warren Buffett" },
+      { t: "An investment in knowledge pays the best interest.", a: "— Benjamin Franklin" },
+      { t: "The four most dangerous words in investing are: 'this time it's different.'", a: "— Sir John Templeton" },
+      { t: "Know what you own, and know why you own it.", a: "— Peter Lynch" },
+      { t: "In the short run, the market is a voting machine. In the long run, it is a weighing machine.", a: "— Benjamin Graham" },
+      { t: "Price is what you pay. Value is what you get.", a: "— Warren Buffett" },
+      { t: "Behind every stock is a company. Find out what it's doing.", a: "— Peter Lynch" },
+      { t: "The intelligent investor is a realist who sells to optimists and buys from pessimists.", a: "— Benjamin Graham" },
+      { t: "It's not whether you're right or wrong, but how much you make when you're right.", a: "— George Soros" },
+      { t: "The time in the market beats timing the market.", a: "— Ken Fisher" },
+      { t: "Never invest in a business you cannot understand.", a: "— Warren Buffett" },
+      { t: "Compound interest is the eighth wonder of the world. He who understands it, earns it.", a: "— Albert Einstein" },
+      { t: "The biggest risk of all is not taking one.", a: "— Mellody Hobson" },
+      { t: "The market is filled with individuals who know the price of everything, but the value of nothing.", a: "— Philip Fisher" },
+      { t: "Investing is simple, but not easy.", a: "— Warren Buffett" },
+      { t: "Do not save what is left after spending; spend what is left after saving.", a: "— Warren Buffett" },
+      { t: "Wide diversification is only required when investors do not understand what they are doing.", a: "— Warren Buffett" },
+    ];
+    let wisdomIdx = 0, wisdomTimer;
+    function cycleWisdom() {
+      const w = wisdoms[wisdomIdx++ % wisdoms.length];
+      const te = document.getElementById('wisdom-text'), ae = document.getElementById('wisdom-author');
+      te.style.animation = ae.style.animation = 'none';
+      void te.offsetWidth;
+      te.style.animation = ae.style.animation = 'wisdomFade 6s ease-in-out infinite';
+      te.textContent = `"${w.t}"`; ae.textContent = w.a;
+    }
+    function showLoading() {
+      cycleWisdom(); wisdomTimer = setInterval(cycleWisdom, 6000);
+      document.getElementById('loading-screen').style.display = 'flex';
+    }
+    function hideLoading() {
+      clearInterval(wisdomTimer);
+      const ls = document.getElementById('loading-screen');
+      ls.style.transition = 'opacity 0.5s'; ls.style.opacity = '0';
+      setTimeout(() => { ls.style.display = 'none'; ls.style.opacity = '1'; ls.style.transition = ''; }, 500);
+    }
+
+    // Helpers
+    function vClass(v) { if (!v) return 'verdict-hold'; const u = v.toUpperCase(); if (u.includes('BUY')) return 'verdict-buy'; if (u.includes('SELL')) return 'verdict-sell'; return 'verdict-hold'; }
+    function vLabel(v) { return v ? v.toUpperCase().replace('_', ' ') : 'HOLD'; }
+    function sColor(s) { if (s >= 75) return 'var(--sage)'; if (s >= 60) return 'var(--amber)'; return 'var(--rose)'; }
+    function fn(n, d = 2) { return n == null ? '—' : Number(n).toFixed(d); }
+
+    // FIX #8: correct 52w sign
+    function fmt52(raw) {
+      if (raw == null) return '—';
+      const pct = (Math.abs(raw) * 100).toFixed(2);
+      return (raw >= 0 ? '▲ +' : '▼ −') + pct + '% (52W)';
+    }
+    function w52cls(raw) { return (raw == null || raw >= 0) ? 'stat-change-pos' : 'stat-change-neg'; }
+
+    // Expand toggle
+    function toggleExpand(id, col) {
+      const btn = document.getElementById('ebtn-' + id);
+      const isOpen = btn.classList.contains('open');
+      const full = document.getElementById('efull-' + id);
+      const bulls = document.getElementById('ebulls-' + id);
+      const dets = document.getElementById('edets-' + id);
+      if (isOpen) {
+        btn.classList.remove('open');
+        btn.querySelector('.elabel').textContent = 'Read full analysis';
+        if (full) full.style.display = 'none';
+        if (bulls) bulls.classList.remove('show');
+        if (dets) dets.classList.remove('show');
+      } else {
+        btn.classList.add('open');
+        btn.querySelector('.elabel').textContent = 'Collapse';
+        if (full) full.style.display = 'block';
+        if (bulls) bulls.classList.add('show');
+        if (dets) dets.classList.add('show');
+      }
+    }
+
+    function renderReport(d) {
+      const sc = d.score_breakdown || {}, md = d.market_data || {}, pc = d.persona_reports || {};
+      const price = d.price || 0, iv = d.intrinsic_value || 0, tgt = d.analyst_target || 0;
+      const mos = d.margin_of_safety || 0, upsidePct = d.analyst_upside || 0;
+
+      // FIX #6: price spectrum with zone labels
+      const allPts = [price, iv, tgt].filter(Boolean);
+      const bMin = Math.min(...allPts) * 0.88, bMax = Math.max(...allPts) * 1.08;
+      const pPct = ((price - bMin) / (bMax - bMin) * 100).toFixed(1);
+      const iPct = ((iv - bMin) / (bMax - bMin) * 100).toFixed(1);
+      const tPct = ((tgt - bMin) / (bMax - bMin) * 100).toFixed(1);
+
+      const rsi = md.rsi || 50, fg = md.fear_greed || 50, finalScore = d.final_score || 0;
+      let fgCol = 'var(--sage)';
+      if (fg < 25) fgCol = 'var(--rose)'; else if (fg < 45) fgCol = 'var(--amber)'; else if (fg < 55) fgCol = 'var(--slate)';
+
+      // FIX #3 — log the raw persona_consensus field so it's auditable in devtools
+      console.log('[InvestIQ] persona_consensus field value:', d.persona_consensus);
+
+      // Consensus banner reads d.persona_consensus verbatim — no generation, no template
+      const consensusBanner = d.persona_consensus ? `
+  <div class="consensus-banner">
+    <div class="consensus-banner-eyebrow">✦ Multi-Persona Consensus <span style="font-size:10px;opacity:0.5;font-family:'JetBrains Mono',monospace;letter-spacing:0;text-transform:none;">· from backend field persona_consensus</span></div>
+    <div class="consensus-banner-text">${d.persona_consensus}</div>
+  </div>` : `
+  <div class="consensus-banner" style="border-color:rgba(224,122,95,0.3);">
+    <div class="consensus-banner-eyebrow" style="color:var(--rose);">⚠ persona_consensus field missing from backend response</div>
+    <div style="font-size:13px;color:var(--slate);">The backend did not return a persona_consensus field. Check the API response in the browser console.</div>
+  </div>`;
+
+      // FIX #1 #2 #3 — full persona cards
+      const pCfg = {
+        buffett: { col: 'var(--gold)', bg: 'var(--gold-dim)', border: 'rgba(201,168,76,0.2)', label: 'Buffett · Value', dkeys: ['moat', 'earnings_quality'], dlabels: ['Moat Assessment', 'Earnings Quality'] },
+        dalio: { col: 'var(--indigo)', bg: 'var(--indigo-dim)', border: 'rgba(102,126,234,0.2)', label: 'Dalio · Macro', dkeys: ['debt_risk', 'balance_sheet'], dlabels: ['Debt Risk Analysis', 'Balance Sheet Strength'] },
+        lynch: { col: 'var(--teal)', bg: 'var(--teal-dim)', border: 'rgba(56,178,172,0.2)', label: 'Lynch · Growth', dkeys: ['stock_category', 'growth_story'], dlabels: ['Stock Category', 'Growth Story'] },
+      };
+      let personaHTML = '';
+      ['buffett', 'dalio', 'lynch'].forEach(p => {
+        const pr = pc[p]; if (!pr) return;
+        const cfg = pCfg[p]; const score = pr.score || 0;
+        const reasoning = pr.reasoning || '';
+        // First sentence for preview
+        const stopIdx = reasoning.search(/[.!?]/);
+        const preview = stopIdx > 0 ? reasoning.substring(0, stopIdx + 1) : reasoning.substring(0, 140) + '…';
+        const rest = stopIdx > 0 ? reasoning.substring(stopIdx + 1).trim() : '';
+
+        // Positives
+        let posH = '';
+        if (pr.positives && pr.positives.length) {
+          posH = `<div class="bullet-section-label" style="color:var(--sage);">✦ Positives</div>`;
+          pr.positives.forEach(b => { posH += `<div class="bullet-item"><div class="bullet-dot" style="background:var(--sage);"></div><div class="bullet-text">${b}</div></div>`; });
+        }
+        // Concerns
+        let conH = '';
+        if (pr.concerns && pr.concerns.length) {
+          conH = `<div class="bullet-section-label" style="color:var(--rose);margin-top:12px;">⚠ Concerns</div>`;
+          pr.concerns.forEach(b => { conH += `<div class="bullet-item"><div class="bullet-dot" style="background:var(--rose);"></div><div class="bullet-text">${b}</div></div>`; });
+        }
+        // Detail fields
+        let detH = '';
+        cfg.dkeys.forEach((k, i) => {
+          const v = pr[k]; if (!v) return;
+          detH += `<div class="detail-field"><div class="detail-field-label" style="color:${cfg.col};">${cfg.dlabels[i]}</div><div class="detail-field-text">${v}</div></div>`;
+        });
+        const hasMore = rest || (posH || conH) || (detH);
+
+        personaHTML += `
+    <div class="persona-card" style="background:${cfg.bg};border-color:${cfg.border};">
+      <div class="persona-header">
+        <div>
+          <div class="persona-framework" style="color:${cfg.col};">${cfg.label}</div>
+          <div class="persona-name">${vLabel(pr.verdict)}</div>
+        </div>
+        <div class="persona-score-badge" style="color:${cfg.col};background:var(--navy-3);border:1px solid ${cfg.border};">${score}/100</div>
+      </div>
+      <div class="persona-preview">${preview}</div>
+      ${rest ? `<div class="persona-full-reasoning" id="efull-${p}">${rest}</div>` : ''}
+      ${(posH || conH) ? `<div class="persona-bullets" id="ebulls-${p}">${posH}${conH}</div>` : ''}
+      ${detH ? `<div class="persona-details" id="edets-${p}">${detH}</div>` : ''}
+      ${hasMore ? `
+      <button class="expand-btn" id="ebtn-${p}" onclick="toggleExpand('${p}')" style="color:${cfg.col};">
+        <span class="elabel">Read full analysis</span>
+        <span class="expand-arrow">↓</span>
+      </button>`: ''}
+      <div class="persona-mini-bar"><div class="persona-mini-fill" style="width:0%;background:${cfg.col};" data-w="${score}%"></div></div>
+    </div>`;
+      });
+
+      // Bull / bear / risks / catalysts
+      // FIX #1: split only on sentence-ending punctuation — period/exclamation followed by
+      // whitespace + uppercase letter (real sentence boundary), NOT on decimals like $1.3 or ₹3.4.
+      function splitSentences(text) {
+        if (!text) return [];
+        // Split on . or ! only when followed by whitespace then an uppercase letter or end-of-string.
+        // This preserves "₹3.4 lakh", "$1.3 trillion", "9.49%", etc.
+        return text
+          .split(/(?<=[.!])\s+(?=[A-Z"'«"'])/)
+          .map(s => s.trim())
+          .filter(s => s.length > 20);
+      }
+
+      let bullH = '', bearH = '', riskH = '', catH = '';
+      splitSentences(d.bull_case).slice(0, 4).forEach(s => {
+        const clean = s.endsWith('.') || s.endsWith('!') ? s : s + '.';
+        bullH += `<li class="case-item"><div class="case-dot case-dot-bull">↑</div><span class="case-text">${clean}</span></li>`;
+      });
+      splitSentences(d.bear_case).slice(0, 4).forEach(s => {
+        const clean = s.endsWith('.') || s.endsWith('!') ? s : s + '.';
+        bearH += `<li class="case-item"><div class="case-dot case-dot-bear">↓</div><span class="case-text">${clean}</span></li>`;
+      });
+      (d.key_risks || []).forEach(r => { riskH += `<li class="case-item"><div class="case-dot case-dot-risk">!</div><span class="case-text">${r}</span></li>`; });
+      (d.key_catalysts || []).forEach((c, i) => { catH += `<div class="catalyst-item"><div class="catalyst-num">0${i + 1}</div><div class="catalyst-text">${c}</div></div>`; });
+
+      // FIX #5 score formula
+      const bS = sc.buffett || 0, dS = sc.dalio || 0, lS = sc.lynch || 0, fS = sc.final || finalScore;
+
+      // FIX #7 timestamp
+      let ts = '—';
+      if (d.generated_at) { try { ts = new Date(d.generated_at).toLocaleString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }); } catch (e) { ts = d.generated_at; } }
+
+      const html = `
+  <div class="score-hero">
+    <div>
+      <div class="ticker-display">✦ ${d.ticker || 'UNKNOWN'}</div>
+      <div class="company-verdict">Investment<br>Analysis Report</div>
+      <div class="verdict-badge ${vClass(d.verdict)}">${vLabel(d.verdict)}</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;">
+        <div style="font-size:13px;color:var(--slate);">${d.num_analysts || 0} analysts</div>
+        <div style="color:var(--gold);letter-spacing:2px;font-size:13px;">★★★★★</div>
+        <div class="verdict-badge ${vClass(d.recommendation)}" style="font-size:10px;padding:3px 10px;">${vLabel(d.recommendation)}</div>
+      </div>
+    </div>
+    <div class="score-ring-wrap">
+      <div class="score-ring">
+        <svg width="120" height="120" viewBox="0 0 120 120">
+          <circle class="track" cx="60" cy="60" r="50"/>
+          <circle class="fill" id="score-fill" cx="60" cy="60" r="50" style="stroke:${sColor(finalScore)};"/>
+        </svg>
+        <div class="score-number">
+          <div class="score-value" style="color:${sColor(finalScore)};">${finalScore}</div>
+          <div class="score-label">Score</div>
+        </div>
+      </div>
+      <div class="score-sub">Composite AI Score</div>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-card-accent" style="background:linear-gradient(90deg,var(--gold),transparent);"></div>
+      <div class="stat-label">Current Price</div>
+      <div class="stat-value">₹${price.toLocaleString()}</div>
+      <div class="stat-sub ${w52cls(d.week_change_52)}">${fmt52(d.week_change_52)}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-accent" style="background:linear-gradient(90deg,var(--sage),transparent);"></div>
+      <div class="stat-label">Intrinsic Value</div>
+      <div class="stat-value">₹${iv.toLocaleString()}</div>
+      <div class="stat-sub stat-change-pos">+${fn(mos)}% Margin of Safety</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-accent" style="background:linear-gradient(90deg,var(--teal),transparent);"></div>
+      <div class="stat-label">Analyst Target</div>
+      <div class="stat-value">₹${tgt.toLocaleString()}</div>
+      <div class="stat-sub stat-change-pos">↑ ${fn(upsidePct)}% Upside</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-card-accent" style="background:linear-gradient(90deg,var(--indigo),transparent);"></div>
+      <div class="stat-label">P/E Ratio</div>
+      <div class="stat-value">${fn(d.pe_ratio)}×</div>
+      <div class="stat-sub">ROE ${fn(d.roe)}% &nbsp;·&nbsp; ROA ${fn(d.roa)}%</div>
+    </div>
+  </div>
+
+  <!-- PRICE SPECTRUM — FIX #6 -->
+  <div class="panel" style="margin-bottom:20px;">
+    <div class="panel-header">
+      <div class="panel-title">Price Spectrum</div>
+      <div style="font-size:12px;color:var(--slate);">${fn(mos)}% current margin of safety</div>
+    </div>
+    <div class="price-legend">
+      <div class="price-legend-item"><div class="price-legend-dot" style="background:var(--rose);"></div><span>Current ₹${price.toLocaleString()}</span></div>
+      <div class="price-legend-item"><div class="price-legend-dot" style="background:var(--sage);"></div><span>Intrinsic Value ₹${iv.toLocaleString()}</span></div>
+      <div class="price-legend-item"><div class="price-legend-dot" style="background:var(--teal);"></div><span>Analyst Target ₹${tgt.toLocaleString()}</span></div>
+    </div>
+    <div class="price-track">
+      <div class="price-fill" style="width:100%;"></div>
+      <div class="price-cursor" id="pc-current" style="left:0%;background:var(--rose);"></div>
+      <div class="price-cursor" style="left:${iPct}%;background:var(--sage);top:-4px;width:16px;height:16px;"></div>
+      <div class="price-cursor" style="left:${tPct}%;background:var(--teal);top:-4px;width:16px;height:16px;"></div>
+    </div>
+    <div class="price-zones">
+      <div class="price-zone"><div class="price-zone-label">Deep Value Zone</div><div class="price-zone-val" style="color:var(--rose);">MoS &gt; 40%</div></div>
+      <div class="price-zone"><div class="price-zone-label">Current Discount</div><div class="price-zone-val" style="color:var(--gold);">${fn(mos)}% below IV</div></div>
+      <div class="price-zone"><div class="price-zone-label">Fair Value (IV)</div><div class="price-zone-val" style="color:var(--sage);">₹${iv.toLocaleString()}</div></div>
+      <div class="price-zone"><div class="price-zone-label">Analyst Target</div><div class="price-zone-val" style="color:var(--teal);">₹${tgt.toLocaleString()} (+${fn(upsidePct)}%)</div></div>
+    </div>
+    <!-- FIX #5 — score formula -->
+    <div style="margin-top:28px;">
+      <div style="font-size:12px;letter-spacing:0.1em;text-transform:uppercase;color:var(--slate);margin-bottom:14px;">Score Computation</div>
+      <div class="score-breakdown">
+        <div class="sbar-row"><div class="sbar-label" style="color:var(--gold);">Buffett</div><div class="sbar-track"><div class="sbar-fill" data-w="${bS}%" style="width:0%;background:var(--gold);"></div></div><div class="sbar-val" style="color:var(--gold);">${bS}</div></div>
+        <div class="sbar-row"><div class="sbar-label" style="color:var(--indigo);">Dalio</div><div class="sbar-track"><div class="sbar-fill" data-w="${dS}%" style="width:0%;background:var(--indigo);"></div></div><div class="sbar-val" style="color:var(--indigo);">${dS}</div></div>
+        <div class="sbar-row"><div class="sbar-label" style="color:var(--teal);">Lynch</div><div class="sbar-track"><div class="sbar-fill" data-w="${lS}%" style="width:0%;background:var(--teal);"></div></div><div class="sbar-val" style="color:var(--teal);">${lS}</div></div>
+      </div>
+      <div class="score-formula-row">
+        <span class="formula-label">Final =</span>
+        <span class="formula-chip" style="background:var(--gold-dim);color:var(--gold);border:1px solid rgba(201,168,76,0.2);">(${bS} × 35%)</span>
+        <span class="formula-op">+</span>
+        <span class="formula-chip" style="background:var(--indigo-dim);color:var(--indigo);border:1px solid rgba(102,126,234,0.2);">(${dS} × 30%)</span>
+        <span class="formula-op">+</span>
+        <span class="formula-chip" style="background:var(--teal-dim);color:var(--teal);border:1px solid rgba(56,178,172,0.2);">(${lS} × 35%)</span>
+        <span class="formula-op">=</span>
+        <span class="formula-result" style="background:${sColor(fS)}22;color:${sColor(fS)};border:1px solid ${sColor(fS)}55;">${fS}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- FIX #4 — CONSENSUS BANNER (prominent, before personas) -->
+  ${consensusBanner}
+
+  <!-- PERSONA ANALYSIS — FIX #1 #2 #3 -->
+  <div class="panel" style="margin-bottom:20px;">
+    <div class="panel-header">
+      <div class="panel-title">Investor Persona Analysis</div>
+      <div class="moat-pill">✦ 3 Frameworks</div>
+    </div>
+    <div class="persona-grid">${personaHTML}</div>
+  </div>
+
+  <!-- BULL & BEAR -->
+  <div class="section-grid">
+    <div class="panel">
+      <div class="panel-header"><div class="panel-title">Bull Case</div><div class="panel-icon" style="background:var(--sage-dim);color:var(--sage);">↑</div></div>
+      <ul class="case-list">${bullH}</ul>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><div class="panel-title">Bear Case</div><div class="panel-icon" style="background:var(--rose-dim);color:var(--rose);">↓</div></div>
+      <ul class="case-list">${bearH}</ul>
+    </div>
+  </div>
+
+  <!-- SENTIMENT + CATALYSTS -->
+  <div class="section-grid">
+    <div class="panel">
+      <div class="panel-header"><div class="panel-title">Market Sentiment</div><div class="panel-icon" style="background:${fgCol}22;color:${fgCol};">◎</div></div>
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="font-size:52px;font-family:'Instrument Serif',serif;color:${fgCol};line-height:1;">${fg}</div>
+        <div style="font-size:13px;color:var(--slate);margin-top:4px;">${md.fg_class || 'Neutral'}</div>
+      </div>
+      <div>
+        <div class="sent-stat"><span class="sent-key">Sentiment</span><span class="sent-val" style="color:${md.sentiment_score >= 50 ? 'var(--sage)' : 'var(--rose)'};">${md.sentiment_label || '—'}</span></div>
+        <div class="sent-stat"><span class="sent-key">Fear & Greed</span><span class="sent-val" style="color:${fgCol};">${fg} — ${md.fg_class || '—'}</span></div>
+        <div class="sent-stat"><span class="sent-key">RSI</span><span class="sent-val">${rsi}</span></div>
+        <div class="sent-stat"><span class="sent-key">Volume Ratio</span><span class="sent-val">${fn(md.volume_ratio, 2)}×</span></div>
+      </div>
+      <div class="rsi-wrap">
+        <div style="font-size:11px;color:var(--slate);margin-bottom:8px;letter-spacing:0.08em;text-transform:uppercase;">RSI Gauge</div>
+        <div class="rsi-track"><div class="rsi-needle" id="rsi-needle" style="left:0%;"></div></div>
+        <div class="rsi-labels"><span>Oversold 30</span><span>Neutral 50</span><span>Overbought 70</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-header"><div class="panel-title">Key Catalysts</div><div class="panel-icon" style="background:var(--teal-dim);color:var(--teal);">⚡</div></div>
+      <div class="catalyst-list">${catH}</div>
+    </div>
+  </div>
+
+  <!-- RISKS -->
+  <div class="panel" style="margin-bottom:20px;">
+    <div class="panel-header"><div class="panel-title">Key Risks to Monitor</div><div class="panel-icon" style="background:var(--amber-dim);color:var(--amber);">⚠</div></div>
+    <ul class="case-list">${riskH}</ul>
+  </div>
+
+  <!-- THESIS -->
+  <div class="panel" style="margin-bottom:20px;background:linear-gradient(135deg,var(--navy-2) 0%,rgba(201,168,76,0.04) 100%);border-color:rgba(201,168,76,0.15);">
+    <div class="panel-header"><div class="panel-title">Investment Thesis</div><div class="verdict-badge ${vClass(d.verdict)}" style="font-size:11px;">${vLabel(d.verdict)}</div></div>
+    <div class="thesis-text">${d.investment_thesis || d.executive_summary || ''}</div>
+  </div>
+
+  <!-- FIX #7 — FOOTER WITH TIMESTAMP -->
+  <div class="report-footer">
+    <p>This analysis is generated by AI and is for informational purposes only. It does not constitute financial advice. Always consult a qualified financial advisor before making investment decisions. Past performance is not indicative of future results.</p>
+    <div class="footer-meta">
+      <div class="footer-meta-item">✦ <strong>InvestIQ</strong> · AI Analysis</div>
+      <div class="footer-meta-item">📅 Generated <strong>${ts}</strong></div>
+      <div class="footer-meta-item">🔎 Ticker <strong>${d.ticker || '—'}</strong></div>
+      <div class="footer-meta-item">👥 <strong>${d.num_analysts || 0}</strong> analysts surveyed</div>
+    </div>
+  </div>`;
+
+      const rEl = document.getElementById('report');
+      rEl.innerHTML = html;
+      rEl.style.display = 'block';
+
+      setTimeout(() => {
+        // score ring
+        const fill = document.getElementById('score-fill');
+        if (fill) { fill.style.transition = 'stroke-dashoffset 1.5s cubic-bezier(0.4,0,0.2,1)'; fill.style.strokeDashoffset = 314 - (finalScore / 100 * 314); }
+        // price cursor
+        const pc = document.getElementById('pc-current');
+        if (pc) { pc.style.transition = 'left 1.2s cubic-bezier(0.4,0,0.2,1)'; pc.style.left = pPct + '%'; }
+        // rsi needle
+        const rn = document.getElementById('rsi-needle');
+        if (rn) rn.style.left = rsi + '%';
+        // score bars
+        document.querySelectorAll('.sbar-fill[data-w]').forEach(el => {
+          el.style.transition = 'width 1.5s cubic-bezier(0.4,0,0.2,1)'; el.style.width = el.getAttribute('data-w');
+        });
+        // persona mini bars
+        document.querySelectorAll('.persona-mini-fill[data-w]').forEach(el => {
+          el.style.transition = 'width 1.5s cubic-bezier(0.4,0,0.2,1)'; el.style.width = el.getAttribute('data-w');
+        });
+        rEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 120);
+    }
+
+    async function startAnalysis() {
+      const ticker = document.getElementById('ticker-input').value.trim().toUpperCase();
+      const errEl = document.getElementById('error-msg');
+      if (!ticker) { errEl.textContent = 'Please enter a stock ticker.'; errEl.style.display = 'block'; return; }
+      errEl.style.display = 'none';
+      showLoading();
+      document.getElementById('report').style.display = 'none';
+
+      try {
+        const [resp] = await Promise.all([
+          fetch("https://agnatic-physiatric-maci.ngrok-free.dev/webhook-test/analyze-stock", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "ngrok-skip-browser-warning": "true"
+            },
+            body: JSON.stringify({ ticker: ticker })
+          }),
+          new Promise(resolve => setTimeout(resolve, 15000))
+        ]);
+
+        const rawText = await resp.text();
+        console.log("[InvestIQ] Raw response from n8n:", rawText);
+
+        if (!resp.ok) throw new Error(`API error ${resp.status}`);
+        if (!rawText || rawText.trim() === '') {
+          throw new Error("Received an empty response from n8n. Check your 'Respond to Webhook' node.");
+        }
+
+        let parsed;
+        try {
+          parsed = JSON.parse(rawText);
+        } catch (e) {
+          throw new Error("n8n responded with invalid JSON. Check the console for the raw response.");
+        }
+
+        // n8n might return the object wrapped in an array
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          parsed = parsed[0];
+        }
+
+        // FIX #3 — audit persona_consensus in devtools
+        console.log('[InvestIQ] Full parsed response:', parsed);
+        console.log('[InvestIQ] persona_consensus:', parsed.persona_consensus);
+        hideLoading();
+        renderReport(parsed);
+      } catch (err) {
+        hideLoading();
+        errEl.textContent = `Analysis failed: ${err.message}. Please try again.`;
+        errEl.style.display = 'block';
+        console.error(err);
+      }
+    }
+
+    document.getElementById('ticker-input').addEventListener('keydown', e => { if (e.key === 'Enter') startAnalysis(); });
+
+
+  </script>
+</body>
+
+</html>

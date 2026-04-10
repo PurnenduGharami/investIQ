@@ -1,0 +1,1123 @@
+{
+  "name": "InvestIQ",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "analyze-stock",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "OPTIONS, GET, POST"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type, Authorization"
+              }
+            ]
+          }
+        }
+      },
+      "id": "bbb254ac-dd8c-4c7f-a104-5075c546c6cf",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -3056,
+        496
+      ],
+      "webhookId": "0a705494-6513-4efb-9386-65bd7a0e44d9"
+    },
+    {
+      "parameters": {
+        "url": "https://api.alternative.me/fng/",
+        "options": {}
+      },
+      "id": "bd0de148-a040-4500-8a18-9777d0052ff7",
+      "name": "HTTP Fear And Greed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2672,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://query1.finance.yahoo.com/v8/finance/chart/{{ $json.body.ticker }}?interval=1d&range=30d",
+        "options": {}
+      },
+      "id": "6f1bfc91-ac61-4732-a2fb-cb2dd43703f3",
+      "name": "HTTP NSE Technical",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2672,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $input.first().json.quoteSummary.result[0].defaultKeyStatistics;\nreturn {\n  eps:              result.trailingEps?.raw          || 0,\n  book_value:       result.bookValue?.raw            || 0,\n  shares_outstanding: result.sharesOutstanding?.raw  || 1,\n  net_income:       result.netIncomeToCommon?.raw    || 0,\n  forward_pe:       result.forwardPE?.raw            || 0,\n  profit_margin:    result.profitMargins?.raw        || 0,\n  div_per_share:    result.lastDividendValue?.raw    || 0,\n  enterprise_value: result.enterpriseValue?.raw      || 0,\n  week_change_52:   result['52WeekChange']?.raw      || 0\n};"
+      },
+      "id": "c6ebd380-051c-40a4-993b-5970ae66462c",
+      "name": "Parse Statistics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2448,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $input.first().json.quoteSummary.result[0].financialData;\nreturn {\n  price:             result.currentPrice?.raw             || 0,\n  total_debt:        result.totalDebt?.raw                || 0,\n  total_revenue:     result.totalRevenue?.raw             || 1,\n  ebitda:            result.ebitda?.raw                   || 0,\n  debt_to_equity:    result.debtToEquity?.raw             || 0,\n  gross_profits:     result.grossProfits?.raw             || 0,\n  earnings_growth:   result.earningsGrowth?.raw           || 0,\n  revenue_growth:    result.revenueGrowth?.raw            || 0,\n  gross_margins:     result.grossMargins?.raw             || 0,\n  ebitda_margins:    result.ebitdaMargins?.raw            || 0,\n  operating_margins: result.operatingMargins?.raw         || 0,\n  total_cash:        result.totalCash?.raw                || 0,\n  analyst_target:    result.targetMeanPrice?.raw          || 0,\n  recommendation:    result.recommendationKey             || 'none',\n  num_analysts:      result.numberOfAnalystOpinions?.raw  || 0\n};"
+      },
+      "id": "05ee0893-2691-49cb-8b86-8c22b42e886a",
+      "name": "Parse Financials",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2448,
+        416
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const raw = $input.item.json;\nconst data = (raw.data && raw.data[0]) ? raw.data[0] : raw;\nreturn {\n  json: {\n    fg_value: (data.value !== undefined && data.value !== null && data.value !== '') ? Number(data.value) : 50,\n    fg_classification: (data.value_classification !== undefined && data.value_classification !== '') ? data.value_classification : 'Neutral'\n  }\n};"
+      },
+      "id": "e9b69e58-9dfa-4eff-a6c8-f4bfb1d313de",
+      "name": "Parse Fear Greed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2448,
+        608
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const raw = $input.item.json;\nlet rsi = 50, currentVol = 0, avgVol = 1;\ntry {\n  const result = raw.chart && raw.chart.result && raw.chart.result[0];\n  if (result) {\n    const closes = result.indicators.quote[0].close || [];\n    const volumes = result.indicators.quote[0].volume || [];\n    const period = 14;\n    if (closes.length >= period + 1) {\n      let gains = 0, losses = 0;\n      for (let i = closes.length - period; i < closes.length; i++) {\n        const diff = closes[i] - closes[i - 1];\n        if (diff > 0) gains += diff;\n        else losses += Math.abs(diff);\n      }\n      const avgGain = gains / period;\n      const avgLoss = losses / period;\n      if (avgLoss === 0) { rsi = 100; }\n      else { const rs = avgGain / avgLoss; rsi = Math.round(100 - (100 / (1 + rs))); }\n    }\n    const validVols = volumes.filter(v => v !== null && v !== undefined);\n    if (validVols.length > 0) {\n      currentVol = validVols[validVols.length - 1] || 0;\n      const last20 = validVols.slice(-20);\n      avgVol = last20.reduce((a, b) => a + b, 0) / last20.length || 1;\n    }\n  }\n} catch(e) {}\nconst volRatio = currentVol / avgVol;\nreturn {\n  json: {\n    tech_rsi: rsi,\n    tech_volume_ratio: Math.round(volRatio * 100) / 100\n  }\n};"
+      },
+      "id": "24f8677f-665c-4ae3-9674-7e8cf942bd6c",
+      "name": "Parse Technical",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2448,
+        800
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "30be573f-2be4-4651-9cdb-0440a7420f8e",
+      "name": "Merge Fundamentals",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -2224,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "9af7a6af-7e78-4521-b2b0-11a40981d916",
+      "name": "Merge Sentiment Data",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        -2224,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst merged = items.reduce((acc, item) => Object.assign(acc, item.json), {});\nreturn [{ json: merged }];"
+      },
+      "id": "683c253e-bf3e-4f5c-917b-b8c3322e6d3e",
+      "name": "Combine Sentiment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2000,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.item.json;\nconst fgRaw = Number(d.fg_value || 50);\nconst fearGreed = Math.min(100, Math.max(0, fgRaw));\nconst rsiRaw = Number(d.tech_rsi || 50);\nconst rsiScore = Math.min(100, Math.max(0, rsiRaw));\nconst volRatioRaw = Number(d.tech_volume_ratio || 1);\nconst volumeScore = Math.min(100, Math.max(0, (volRatioRaw - 1) * 50 + 50));\nconst sentimentScore = Math.round(fearGreed * 0.4 + rsiScore * 0.4 + volumeScore * 0.2);\nlet label = 'Neutral';\nif (sentimentScore >= 75) label = 'Strong Bullish';\nelse if (sentimentScore >= 60) label = 'Bullish';\nelse if (sentimentScore <= 25) label = 'Strong Bearish';\nelse if (sentimentScore <= 40) label = 'Bearish';\nreturn {\n  json: {\n    market_sentiment_score: sentimentScore,\n    market_sentiment_label: label,\n    fear_greed: fearGreed,\n    fg_classification: d.fg_classification || 'Neutral',\n    rsi_score: rsiScore,\n    volume_score: Math.round(volumeScore),\n    volume_ratio: d.tech_volume_ratio || 1\n  }\n};"
+      },
+      "id": "b77313f6-a291-4daa-bf41-f5f5ca50b96f",
+      "name": "Normalize Sentiment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1776,
+        704
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.item.json;\nconst growthRate = 0.10;\nconst discountRate = 0.12;\nconst terminalMultiple = 15;\nconst fcfPerShare = d.free_cash_flow / (d.shares_outstanding || 1);\nlet dcfValue = 0;\nfor (let year = 1; year <= 10; year++) {\n  const projectedFCF = fcfPerShare * Math.pow(1 + growthRate, year);\n  dcfValue += projectedFCF / Math.pow(1 + discountRate, year);\n}\nconst terminalValue = (fcfPerShare * Math.pow(1 + growthRate, 10) * terminalMultiple) / Math.pow(1 + discountRate, 10);\nconst intrinsicValue = Math.round(dcfValue + terminalValue);\nconst marginOfSafety = d.price > 0 ? parseFloat((((intrinsicValue - d.price) / d.price) * 100).toFixed(2)) : 0;\nreturn {\n  ...d,\n  intrinsic_value: intrinsicValue,\n  margin_of_safety: marginOfSafety,\n  fcf_per_share: parseFloat(fcfPerShare.toFixed(2))\n};"
+      },
+      "id": "e52cabf0-39df-4ac3-942c-52f48ff5f3be",
+      "name": "DCF Calculator",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1776,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "cf34df56-a443-4fac-9212-314838867507",
+      "name": "Merge DCF + Sentiment",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        -1552,
+        -192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst merged = items.reduce((acc, item) => Object.assign(acc, item.json), {});\nreturn [{ json: merged }];"
+      },
+      "id": "f250525c-0a56-4eb8-a2f9-c8c137dc01df",
+      "name": "Inject Market Sentiment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1328,
+        -192
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://yahoo-finance166.p.rapidapi.com/api/stock/get-statistics?symbol={{ $json.body.ticker}}&region=IN",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "8b579719-dbce-4171-9e05-0f4cae084db6",
+      "name": "API Call - Statistics1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -2672,
+        48
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "fsEaEQMGH0uvlpoa",
+          "name": "Yfinance rapid"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://yahoo-finance166.p.rapidapi.com/api/stock/get-financial-data?region=IN&symbol={{ $json.body.ticker }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "39cf4479-26fd-42a6-8b9b-245293d696b0",
+      "name": "API Call - Financials1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -2672,
+        416
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "fsEaEQMGH0uvlpoa",
+          "name": "Yfinance rapid"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const ticker = $('Webhook').first().json.body.ticker || 'UNKNOWN';\nconst eps             = $input.first().json.eps              || 0;\nconst bookValue       = $input.first().json.book_value       || 0;\nconst sharesOut       = $input.first().json.shares_outstanding || 1;\nconst netIncome       = $input.first().json.net_income       || 0;\nconst forwardPE       = $input.first().json.forward_pe       || 0;\nconst profitMargins   = $input.first().json.profit_margin    || 0;\nconst divPerShare     = $input.first().json.div_per_share    || 0;\nconst enterpriseValue = $input.first().json.enterprise_value  || 0;\nconst weekChange52    = $input.first().json.week_change_52   || 0;\nconst price            = $input.last().json.price            || 0;\nconst totalDebt        = $input.last().json.total_debt       || 0;\nconst totalRevenue     = $input.last().json.total_revenue    || 1;\nconst ebitda           = $input.last().json.ebitda           || 0;\nconst debtToEquity     = $input.last().json.debt_to_equity   || 0;\nconst grossProfits     = $input.last().json.gross_profits    || 0;\nconst earningsGrowth   = $input.last().json.earnings_growth  || 0;\nconst revenueGrowth    = $input.last().json.revenue_growth   || 0;\nconst grossMargins     = $input.last().json.gross_margins    || 0;\nconst ebitdaMargins    = $input.last().json.ebitda_margins   || 0;\nconst operatingMargins = $input.last().json.operating_margins || 0;\nconst totalCash        = $input.last().json.total_cash       || 0;\nconst analystTarget    = $input.last().json.analyst_target   || 0;\nconst recommendationKey = $input.last().json.recommendation  || 'none';\nconst numAnalysts      = $input.last().json.num_analysts     || 0;\nconst shareholdersEquity = bookValue * sharesOut;\nconst roe = shareholdersEquity > 0 ? parseFloat(((netIncome / shareholdersEquity) * 100).toFixed(2)) : 0;\nconst roa = enterpriseValue > 0 ? parseFloat(((netIncome / enterpriseValue) * 100).toFixed(2)) : 0;\nconst freeCashFlow  = Math.round(ebitda * 0.75);\nconst dividendsPaid = Math.round(divPerShare * sharesOut);\nconst netCash       = totalCash - totalDebt;\nconst analystUpside = price > 0 && analystTarget > 0 ? parseFloat((((analystTarget - price) / price) * 100).toFixed(2)) : 0;\nconst pe = eps > 0 ? parseFloat((price / eps).toFixed(2)) : 999;\nconst pb = bookValue > 0 ? parseFloat((price / bookValue).toFixed(2)) : 999;\nconst debtToIncome = netIncome > 0 ? parseFloat((totalDebt / netIncome).toFixed(2)) : 999;\nreturn {\n  ticker, price, eps, net_income: netIncome,\n  profit_margin: profitMargins, earnings_growth: earningsGrowth, revenue_growth: revenueGrowth,\n  book_value: bookValue, forward_pe: forwardPE, roe, roa,\n  free_cash_flow: freeCashFlow, dividends_paid: dividendsPaid,\n  total_debt: totalDebt, total_cash: totalCash, net_cash: netCash,\n  debt_to_equity: debtToEquity, debt_to_income: debtToIncome,\n  total_revenue: totalRevenue, ebitda,\n  gross_profits: grossProfits, gross_margins: grossMargins,\n  ebitda_margins: ebitdaMargins, operating_margins: operatingMargins,\n  shares_outstanding: sharesOut, div_per_share: divPerShare,\n  analyst_target: analystTarget, analyst_upside: analystUpside,\n  recommendation: recommendationKey, num_analysts: numAnalysts,\n  week_change_52: weekChange52, pe_ratio: pe, price_to_book: pb\n};"
+      },
+      "id": "b8b025dc-70cf-4d1e-87cc-3cf661fdba2a",
+      "name": "Normalize Data1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2000,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.item.json;\n\nconst fmt = (n, decimals = 2) => {\n  if (n === null || n === undefined || isNaN(n)) return 'N/A';\n  if (Math.abs(n) >= 1e12) return (n / 1e12).toFixed(2) + 'T';\n  if (Math.abs(n) >= 1e9) return (n / 1e9).toFixed(2) + 'B';\n  if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(2) + 'M';\n  return Number(n).toFixed(decimals);\n};\n\nconst pct = (n) => n !== undefined && n !== null ? (n * 100).toFixed(1) + '%' : 'N/A';\n\nconst dataBlock = `\nTICKER: ${d.ticker}\nCurrent Price: INR ${d.price} | Intrinsic Value (DCF): INR ${d.intrinsic_value} | Margin of Safety: ${d.margin_of_safety}%\nEPS (TTM): ${d.eps} | P/E Ratio: ${d.pe_ratio} | Forward P/E: ${d.forward_pe} | Price-to-Book: ${d.price_to_book}\nBook Value/Share: INR ${d.book_value} | ROE: ${d.roe}% | ROA: ${d.roa}%\nRevenue Growth (YoY): ${pct(d.revenue_growth)} | Earnings Growth (YoY): ${pct(d.earnings_growth)}\nGross Margin: ${pct(d.gross_margins)} | EBITDA Margin: ${pct(d.ebitda_margins)} | Operating Margin: ${pct(d.operating_margins)}\nEBITDA: INR ${fmt(d.ebitda)} | Free Cash Flow (est): INR ${fmt(d.free_cash_flow)}\nTotal Debt: INR ${fmt(d.total_debt)} | Total Cash: INR ${fmt(d.total_cash)} | Net Cash: INR ${fmt(d.net_cash)}\nDebt-to-Equity: ${d.debt_to_equity} | Debt-to-Net-Income: ${d.debt_to_income}\nShares Outstanding: ${fmt(d.shares_outstanding)} | Dividends Paid: INR ${fmt(d.dividends_paid)}\nAnalyst Target: INR ${d.analyst_target} | Analyst Upside: ${d.analyst_upside}% | Consensus: ${d.recommendation} (${d.num_analysts} analysts)\nFear & Greed Index: ${d.fear_greed} (${d.fg_classification}) | RSI(14): ${d.rsi_score} | Volume Ratio: ${d.volume_ratio}x\nMarket Sentiment: ${d.market_sentiment_label} (score: ${d.market_sentiment_score}/100)\n52-Week Change: ${pct(d.week_change_52)}\n`;\n\nconst buffettPrompt = `You are Warren Buffett analyzing a potential stock investment. Think and reason exactly as Buffett would — focus on durable competitive moat, consistent high ROE, pricing power, quality of earnings, margin of safety vs intrinsic value, and management capital allocation. Be skeptical of high debt. Ignore short-term noise.\n\nHere is the complete financial data for analysis:\n${dataBlock}\n\nProvide your analysis as a seasoned value investor with 60+ years of experience. Be specific about WHY the numbers do or do not excite you. Reference actual figures from the data.\n\nRespond ONLY with valid JSON, no markdown, no preamble:\n{\n  \"score\": <integer 0-100>,\n  \"verdict\": \"<STRONG BUY|BUY|HOLD|SELL|STRONG SELL>\",\n  \"moat_assessment\": \"<2-3 sentences on competitive moat and pricing power>\",\n  \"earnings_quality\": \"<2 sentences on earnings consistency and quality>\",\n  \"key_positives\": [\"<specific point with data>\", \"<specific point>\", \"<specific point>\"],\n  \"key_concerns\": [\"<specific concern with data>\", \"<specific concern>\"],\n  \"reasoning\": \"<4-5 sentence Buffett-voice narrative explaining your score, referencing specific metrics>\"\n}`;\n\nconst dalioPrompt = `You are Ray Dalio analyzing this stock through your macro and risk-parity framework. Think as Dalio would — focus on debt sustainability, balance sheet resilience, ability to survive a downturn or credit cycle, cash flow coverage of obligations, macro sensitivity, and whether the risk/reward is balanced. You distrust leverage.\n\nHere is the complete financial data:\n${dataBlock}\n\nAnalyze from a macro risk perspective. Be specific about the debt picture, cash cushion, and what happens to this company in a recession or rising-rate environment. Reference actual figures.\n\nRespond ONLY with valid JSON, no markdown, no preamble:\n{\n  \"score\": <integer 0-100>,\n  \"verdict\": \"<STRONG BUY|BUY|HOLD|SELL|STRONG SELL>\",\n  \"debt_risk_assessment\": \"<2-3 sentences on debt load, coverage, and macro risk>\",\n  \"balance_sheet_strength\": \"<2 sentences on cash position and liquidity>\",\n  \"key_positives\": [\"<specific point with data>\", \"<specific point>\", \"<specific point>\"],\n  \"key_concerns\": [\"<specific concern with data>\", \"<specific concern>\"],\n  \"reasoning\": \"<4-5 sentence Dalio-voice narrative referencing debt metrics, cash flow, and macro environment>\"\n}`;\n\nconst lynchPrompt = `You are Peter Lynch analyzing this stock using your GARP (Growth at a Reasonable Price) philosophy. Think as Lynch would — focus on PEG ratio, earnings momentum, whether this is a fast grower / stalwart / turnaround / asset play, analyst consensus, and whether there is a clear investable story that a retail investor can understand and track.\n\nHere is the complete financial data:\n${dataBlock}\n\nAnalyze as a pragmatic growth-value investor. Identify what category of stock this is and whether the growth justifies the price. Be specific about growth rates and valuation. Reference actual figures.\n\nRespond ONLY with valid JSON, no markdown, no preamble:\n{\n  \"score\": <integer 0-100>,\n  \"verdict\": \"<STRONG BUY|BUY|HOLD|SELL|STRONG SELL>\",\n  \"stock_category\": \"<fast grower|stalwart|slow grower|cyclical|turnaround|asset play>\",\n  \"growth_story\": \"<2-3 sentences on growth trajectory and earnings momentum>\",\n  \"key_positives\": [\"<specific point with data>\", \"<specific point>\", \"<specific point>\"],\n  \"key_concerns\": [\"<specific concern with data>\", \"<specific concern>\"],\n  \"reasoning\": \"<4-5 sentence Lynch-voice narrative referencing PEG, growth rates, and analyst consensus>\"\n}`;\n\n// Snapshot ALL fields into base_str NOW before the Switch node splits items\n// This is the only safe point where all data is together\nconst baseStr = JSON.stringify({\n  ticker:               d.ticker,\n  price:                d.price,\n  eps:                  d.eps,\n  net_income:           d.net_income,\n  roe:                  d.roe,\n  roa:                  d.roa,\n  pe_ratio:             d.pe_ratio,\n  price_to_book:        d.price_to_book,\n  book_value:           d.book_value,\n  forward_pe:           d.forward_pe,\n  intrinsic_value:      d.intrinsic_value,\n  margin_of_safety:     d.margin_of_safety,\n  fcf_per_share:        d.fcf_per_share,\n  free_cash_flow:       d.free_cash_flow,\n  total_debt:           d.total_debt,\n  total_cash:           d.total_cash,\n  net_cash:             d.net_cash,\n  debt_to_equity:       d.debt_to_equity,\n  debt_to_income:       d.debt_to_income,\n  ebitda:               d.ebitda,\n  ebitda_margins:       d.ebitda_margins,\n  gross_margins:        d.gross_margins,\n  operating_margins:    d.operating_margins,\n  revenue_growth:       d.revenue_growth,\n  earnings_growth:      d.earnings_growth,\n  total_revenue:        d.total_revenue,\n  shares_outstanding:   d.shares_outstanding,\n  analyst_target:       d.analyst_target,\n  analyst_upside:       d.analyst_upside,\n  recommendation:       d.recommendation,\n  num_analysts:         d.num_analysts,\n  week_change_52:       d.week_change_52,\n  profit_margin:        d.profit_margin,\n  dividends_paid:       d.dividends_paid,\n  div_per_share:        d.div_per_share,\n  market_sentiment_score: d.market_sentiment_score,\n  market_sentiment_label: d.market_sentiment_label,\n  fear_greed:             d.fear_greed,\n  fg_classification:      d.fg_classification,\n  rsi_score:              d.rsi_score,\n  volume_score:           d.volume_score,\n  volume_ratio:           d.volume_ratio\n});\n\nreturn [\n  { json: { ...d, persona: 'buffett', ai_prompt: buffettPrompt, _base_str: baseStr } },\n  { json: { ...d, persona: 'dalio',   ai_prompt: dalioPrompt,   _base_str: baseStr } },\n  { json: { ...d, persona: 'lynch',   ai_prompt: lynchPrompt,   _base_str: baseStr } }\n];"
+      },
+      "id": "269ae759-ec0e-45a5-bcdf-8677936fa9de",
+      "name": "Build AI Prompts1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1104,
+        -192
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.persona }}",
+                    "rightValue": "buffett",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "3e9d6011-0516-4b83-b149-27f81774c701"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "buffett"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.persona }}",
+                    "rightValue": "dalio",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "eec0c81f-d52a-4150-a787-968157c10c37"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "dalio"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 1
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.persona }}",
+                    "rightValue": "lynch",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "895ede34-a8c6-4170-9263-215305219354"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "lynch"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2d5ca173-06d1-4e7d-a1da-235ba57dbb9c",
+      "name": "Route by Persona1",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [
+        -880,
+        -208
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.ai_prompt }}",
+        "options": {
+          "systemMessage": "You are Warren Buffett, the legendary value investor. You have 60+ years of investment experience. Always respond with valid JSON only. No markdown formatting, no code blocks, no explanation outside the JSON structure. Your analysis must be specific, reference actual numbers from the data, and sound authentically like Buffett's documented investment philosophy."
+        }
+      },
+      "id": "4dc620b1-71f8-4b2c-9b6c-380a9d4ff294",
+      "name": "Buffett AI Agent1",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -656,
+        -688
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.ai_prompt }}",
+        "options": {
+          "systemMessage": "You are Ray Dalio, the macro investor and founder of Bridgewater Associates. You analyze investments through the lens of debt cycles, macro risk, and balance sheet resilience. Always respond with valid JSON only. No markdown formatting, no code blocks, no explanation outside the JSON structure. Your analysis must be specific, reference actual numbers, and reflect Dalio's documented principles around debt and macro."
+        }
+      },
+      "id": "e5fdb2d8-1f3b-4564-96b7-23cf01f49f44",
+      "name": "Dalio AI Agent1",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -656,
+        -288
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.ai_prompt }}",
+        "options": {
+          "systemMessage": "You are Peter Lynch, the legendary growth investor who managed the Magellan Fund. You believe in investing in what you know, GARP principles, and finding the story behind every stock. Always respond with valid JSON only. No markdown formatting, no code blocks, no explanation outside the JSON structure. Your analysis must reference actual numbers and sound like Lynch's documented investment style."
+        }
+      },
+      "id": "26521cc3-b387-4ccf-81c0-d98b745ddd61",
+      "name": "Lynch AI Agent1",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -656,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst persona = item.persona || 'buffett';\nconst rawOutput = item.output || item.text || item.response || item.message || (item.choices && item.choices[0]?.message?.content) || '';\nlet parsed = {};\ntry {\n  const cleaned = rawOutput.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  parsed = JSON.parse(cleaned);\n} catch(e) {\n  parsed = { score: 50, verdict: 'HOLD', key_positives: ['Unable to parse AI response'], key_concerns: ['Parse error'], reasoning: 'Parse error. Raw: ' + rawOutput.substring(0, 200) };\n}\nconst result = { _base_str: item._base_str };\nresult[persona + '_score']     = parsed.score     || 50;\nresult[persona + '_verdict']   = parsed.verdict   || 'HOLD';\nresult[persona + '_reasoning'] = parsed.reasoning || '';\nresult[persona + '_positives'] = parsed.key_positives || [];\nresult[persona + '_concerns']  = parsed.key_concerns  || [];\nresult[persona + '_detail']    = parsed;\nreturn result;"
+      },
+      "id": "d64abaa1-a9fc-447d-90ff-839b2ffcb420",
+      "name": "Parse Buffett Output1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -304,
+        -592
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst persona = item.persona || 'dalio';\nconst rawOutput = item.output || item.text || item.response || item.message || (item.choices && item.choices[0]?.message?.content) || '';\nlet parsed = {};\ntry {\n  const cleaned = rawOutput.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  parsed = JSON.parse(cleaned);\n} catch(e) {\n  parsed = { score: 50, verdict: 'HOLD', key_positives: ['Unable to parse AI response'], key_concerns: ['Parse error'], reasoning: 'Parse error. Raw: ' + rawOutput.substring(0, 200) };\n}\nconst result = { _base_str: item._base_str };\nresult[persona + '_score']     = parsed.score     || 50;\nresult[persona + '_verdict']   = parsed.verdict   || 'HOLD';\nresult[persona + '_reasoning'] = parsed.reasoning || '';\nresult[persona + '_positives'] = parsed.key_positives || [];\nresult[persona + '_concerns']  = parsed.key_concerns  || [];\nresult[persona + '_detail']    = parsed;\nreturn result;"
+      },
+      "id": "bd21ae7c-5240-4f43-bc4c-097e474a9d65",
+      "name": "Parse Dalio Output1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -304,
+        -192
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst persona = item.persona || 'lynch';\nconst rawOutput = item.output || item.text || item.response || item.message || (item.choices && item.choices[0]?.message?.content) || '';\nlet parsed = {};\ntry {\n  const cleaned = rawOutput.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  parsed = JSON.parse(cleaned);\n} catch(e) {\n  parsed = { score: 50, verdict: 'HOLD', key_positives: ['Unable to parse AI response'], key_concerns: ['Parse error'], reasoning: 'Parse error. Raw: ' + rawOutput.substring(0, 200) };\n}\nconst result = { _base_str: item._base_str };\nresult[persona + '_score']     = parsed.score     || 50;\nresult[persona + '_verdict']   = parsed.verdict   || 'HOLD';\nresult[persona + '_reasoning'] = parsed.reasoning || '';\nresult[persona + '_positives'] = parsed.key_positives || [];\nresult[persona + '_concerns']  = parsed.key_concerns  || [];\nresult[persona + '_detail']    = parsed;\nreturn result;"
+      },
+      "id": "17c6f15c-2f5b-4e72-9b42-f973229c9d09",
+      "name": "Parse Lynch Output1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -304,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -80,
+        -208
+      ],
+      "id": "d91a95d3-cc3a-4b22-9905-95a0faef8df4",
+      "name": "Merge2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\n// Each parse node outputs only persona fields + _base_str\n// Find each by their unique persona score key\nconst buffett = items.find(i => i.json.buffett_score !== undefined)?.json || {};\nconst dalio   = items.find(i => i.json.dalio_score   !== undefined)?.json || {};\nconst lynch   = items.find(i => i.json.lynch_score   !== undefined)?.json || {};\n\n// Recover the base financial data from _base_str\n// All three items carry an identical copy — use whichever is available\nconst baseStr = buffett._base_str || dalio._base_str || lynch._base_str || '{}';\nconst fin = JSON.parse(baseStr);\n\nreturn [{\n  json: {\n    // All financial fields from fin (the clean snapshot made in Build AI Prompts)\n    ticker:               fin.ticker,\n    price:                fin.price,\n    eps:                  fin.eps,\n    net_income:           fin.net_income,\n    roe:                  fin.roe,\n    roa:                  fin.roa,\n    pe_ratio:             fin.pe_ratio,\n    price_to_book:        fin.price_to_book,\n    book_value:           fin.book_value,\n    forward_pe:           fin.forward_pe,\n    intrinsic_value:      fin.intrinsic_value,\n    margin_of_safety:     fin.margin_of_safety,\n    fcf_per_share:        fin.fcf_per_share,\n    free_cash_flow:       fin.free_cash_flow,\n    total_debt:           fin.total_debt,\n    total_cash:           fin.total_cash,\n    net_cash:             fin.net_cash,\n    debt_to_equity:       fin.debt_to_equity,\n    debt_to_income:       fin.debt_to_income,\n    ebitda:               fin.ebitda,\n    ebitda_margins:       fin.ebitda_margins,\n    gross_margins:        fin.gross_margins,\n    operating_margins:    fin.operating_margins,\n    revenue_growth:       fin.revenue_growth,\n    earnings_growth:      fin.earnings_growth,\n    total_revenue:        fin.total_revenue,\n    shares_outstanding:   fin.shares_outstanding,\n    analyst_target:       fin.analyst_target,\n    analyst_upside:       fin.analyst_upside,\n    recommendation:       fin.recommendation,\n    num_analysts:         fin.num_analysts,\n    week_change_52:       fin.week_change_52,\n    profit_margin:        fin.profit_margin,\n    dividends_paid:       fin.dividends_paid,\n    div_per_share:        fin.div_per_share,\n    market_sentiment_score: fin.market_sentiment_score,\n    market_sentiment_label: fin.market_sentiment_label,\n    fear_greed:             fin.fear_greed,\n    fg_classification:      fin.fg_classification,\n    rsi_score:              fin.rsi_score,\n    volume_score:           fin.volume_score,\n    volume_ratio:           fin.volume_ratio,\n\n    // Buffett persona results\n    buffett_score:     buffett.buffett_score,\n    buffett_verdict:   buffett.buffett_verdict,\n    buffett_reasoning: buffett.buffett_reasoning,\n    buffett_positives: buffett.buffett_positives,\n    buffett_concerns:  buffett.buffett_concerns,\n    buffett_detail:    buffett.buffett_detail,\n\n    // Dalio persona results\n    dalio_score:     dalio.dalio_score,\n    dalio_verdict:   dalio.dalio_verdict,\n    dalio_reasoning: dalio.dalio_reasoning,\n    dalio_positives: dalio.dalio_positives,\n    dalio_concerns:  dalio.dalio_concerns,\n    dalio_detail:    dalio.dalio_detail,\n\n    // Lynch persona results\n    lynch_score:     lynch.lynch_score,\n    lynch_verdict:   lynch.lynch_verdict,\n    lynch_reasoning: lynch.lynch_reasoning,\n    lynch_positives: lynch.lynch_positives,\n    lynch_concerns:  lynch.lynch_concerns,\n    lynch_detail:    lynch.lynch_detail\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        144,
+        -192
+      ],
+      "id": "c93dea77-139c-49f0-8e16-69aec76137ef",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\n// Item 0 = persona scores, Item 1 = financial data, Item 2 = sentiment data\nconst personas = items.find(i => i.json.buffett_score !== undefined)?.json || {};\nconst fin      = items.find(i => i.json.ticker       !== undefined)?.json || {};\nconst senti    = items.find(i => i.json.fear_greed   !== undefined)?.json || {};\n\n// Merge all three into one flat object\nconst d = { ...fin, ...senti, ...personas };\n\n// Validate critical fields\nif (!d.ticker)        throw new Error('ticker missing — financial item not reaching this node');\nif (!d.buffett_score) throw new Error('buffett_score missing — persona item not reaching this node');\nif (!d.fear_greed)    throw new Error('fear_greed missing — sentiment item not reaching this node');\n\nconst fmt = (n) => {\n  if (n === null || n === undefined || isNaN(n)) return 'N/A';\n  if (Math.abs(n) >= 1e12) return (n / 1e12).toFixed(2) + 'T';\n  if (Math.abs(n) >= 1e9)  return (n / 1e9).toFixed(2) + 'B';\n  if (Math.abs(n) >= 1e6)  return (n / 1e6).toFixed(2) + 'M';\n  return Number(n).toFixed(2);\n};\n\nconst pct = (n) => (n !== null && n !== undefined && !isNaN(n))\n  ? (n * 100).toFixed(1) + '%'\n  : 'N/A';\n\nconst finalPrompt = `You are a senior equity research analyst and portfolio manager at a top-tier investment bank. You have received independent analyses of ${d.ticker} from three legendary investors: Warren Buffett, Ray Dalio, and Peter Lynch. Your job is to synthesize their views, resolve disagreements by referencing specific data, and produce a final institutional-grade investment report with a clear actionable verdict.\n\n=== BUFFETT ANALYSIS (score: ${d.buffett_score}/100, verdict: ${d.buffett_verdict}) ===\nReasoning: ${d.buffett_reasoning}\nKey Positives: ${(d.buffett_positives || []).join(' | ')}\nKey Concerns: ${(d.buffett_concerns || []).join(' | ')}\nMoat Assessment: ${d.buffett_detail?.moat_assessment || 'N/A'}\nEarnings Quality: ${d.buffett_detail?.earnings_quality || 'N/A'}\n\n=== DALIO ANALYSIS (score: ${d.dalio_score}/100, verdict: ${d.dalio_verdict}) ===\nReasoning: ${d.dalio_reasoning}\nKey Positives: ${(d.dalio_positives || []).join(' | ')}\nKey Concerns: ${(d.dalio_concerns || []).join(' | ')}\nDebt Risk Assessment: ${d.dalio_detail?.debt_risk_assessment || 'N/A'}\nBalance Sheet Strength: ${d.dalio_detail?.balance_sheet_strength || 'N/A'}\n\n=== LYNCH ANALYSIS (score: ${d.lynch_score}/100, verdict: ${d.lynch_verdict}) ===\nReasoning: ${d.lynch_reasoning}\nKey Positives: ${(d.lynch_positives || []).join(' | ')}\nKey Concerns: ${(d.lynch_concerns || []).join(' | ')}\nStock Category: ${d.lynch_detail?.stock_category || 'N/A'}\nGrowth Story: ${d.lynch_detail?.growth_story || 'N/A'}\n\n=== COMPLETE FINANCIAL DATA FOR ${d.ticker} ===\nCurrent Price: INR ${d.price} | Intrinsic Value (DCF): INR ${d.intrinsic_value} | Margin of Safety: ${d.margin_of_safety}%\nEPS (TTM): ${d.eps} | P/E Ratio: ${d.pe_ratio} | Forward P/E: ${d.forward_pe} | Price-to-Book: ${d.price_to_book}\nBook Value/Share: INR ${d.book_value} | ROE: ${d.roe}% | ROA: ${d.roa}%\nRevenue Growth (YoY): ${pct(d.revenue_growth)} | Earnings Growth (YoY): ${pct(d.earnings_growth)}\nGross Margin: ${pct(d.gross_margins)} | EBITDA Margin: ${pct(d.ebitda_margins)} | Operating Margin: ${pct(d.operating_margins)}\nEBITDA: INR ${fmt(d.ebitda)} | Free Cash Flow (est): INR ${fmt(d.free_cash_flow)}\nTotal Debt: INR ${fmt(d.total_debt)} | Total Cash: INR ${fmt(d.total_cash)} | Net Cash: INR ${fmt(d.net_cash)}\nDebt-to-Equity: ${d.debt_to_equity} | Debt-to-Net-Income: ${d.debt_to_income}\nShares Outstanding: ${fmt(d.shares_outstanding)} | Dividends Paid: INR ${fmt(d.dividends_paid)}\nAnalyst Target: INR ${d.analyst_target} | Analyst Upside: ${d.analyst_upside}% | Consensus: ${d.recommendation} (${d.num_analysts} analysts)\nFear & Greed Index: ${d.fear_greed} (${d.fg_classification}) | RSI(14): ${d.rsi_score} | Volume Ratio: ${d.volume_ratio}x\nMarket Sentiment: ${d.market_sentiment_label} (score: ${d.market_sentiment_score}/100)\n52-Week Change: ${pct(d.week_change_52)}\n\n=== YOUR TASK ===\n1. Buffett scored ${d.buffett_score}, Dalio scored ${d.dalio_score}, Lynch scored ${d.lynch_score}. Explain specifically WHY they diverge — Dalio is more cautious because of INR ${fmt(d.total_debt)} total debt and Fear & Greed at ${d.fear_greed}, while Buffett and Lynch are more optimistic about the ${d.margin_of_safety}% margin of safety and INR ${fmt(d.free_cash_flow)} FCF.\n2. final_score = Math.round(${d.buffett_score} * 0.35 + ${d.dalio_score} * 0.30 + ${d.lynch_score} * 0.35)\n3. Every field must reference actual numbers — no placeholders, no undefined.\n\nRespond ONLY with valid JSON, no markdown, no code blocks, no preamble:\n{\n  \"final_score\": <integer>,\n  \"verdict\": \"<STRONG BUY|BUY|HOLD|SELL|STRONG SELL>\",\n  \"persona_consensus\": \"<one sentence on agreement/divergence referencing INR ${fmt(d.total_debt)} debt and ${d.margin_of_safety}% MoS>\",\n  \"executive_summary\": \"<3-4 sentences about ${d.ticker} — INR ${d.price} price, INR ${d.intrinsic_value} intrinsic value, ${d.margin_of_safety}% MoS, earnings vs revenue tension>\",\n  \"bull_case\": \"<2-3 sentences — INR ${d.intrinsic_value} IV, ${d.analyst_upside}% upside, ${pct(d.revenue_growth)} revenue growth, INR ${fmt(d.free_cash_flow)} FCF>\",\n  \"bear_case\": \"<2-3 sentences — INR ${fmt(d.total_debt)} debt, INR ${fmt(d.net_cash)} net cash, ${pct(d.earnings_growth)} earnings growth, F&G at ${d.fear_greed}>\",\n  \"key_catalysts\": [\"<catalyst for ${d.ticker}>\", \"<catalyst>\", \"<catalyst>\"],\n  \"key_risks\": [\"<risk with metric>\", \"<risk with metric>\", \"<risk with metric>\"],\n  \"investment_thesis\": \"<paragraph for investment committee — ${d.ticker}, INR ${d.price}, INR ${d.intrinsic_value} IV, ${d.recommendation} from ${d.num_analysts} analysts, ${d.analyst_upside}% upside to INR ${d.analyst_target}, 12-18 month horizon>\",\n  \"score_breakdown\": {\n    \"buffett\": ${d.buffett_score},\n    \"dalio\": ${d.dalio_score},\n    \"lynch\": ${d.lynch_score},\n    \"final\": <same as final_score>\n  }\n}`;\n\n// Snapshot complete merged object as string — survives AI Agent node intact\nreturn {\n  final_prompt: finalPrompt,\n  _base_str: JSON.stringify(d)\n};"
+      },
+      "id": "a97e5f8f-a7d4-43b7-999c-277ed460c597",
+      "name": "Build Final Report Prompt1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        592,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.final_prompt }}",
+        "options": {
+          "systemMessage": "You are a senior equity research analyst at a top investment bank synthesizing independent analyses from three legendary investors into a final institutional research report. You are objective, data-driven, and your job is to resolve disagreements between the personas and produce an actionable verdict. Always respond with valid JSON only. No markdown formatting, no code blocks, no preamble or postamble — just the raw JSON object."
+        }
+      },
+      "id": "b329aa30-54ab-4a34-b9ee-cf74b4a04867",
+      "name": "Final Report AI Agent1",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        816,
+        592
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\n// Find each item by its unique identifying field\nconst agentItem = items.find(i => i.json.output     !== undefined)?.json || {};\nconst fin       = items.find(i => i.json.ticker      !== undefined)?.json || {};\nconst senti     = items.find(i => i.json.fear_greed  !== undefined)?.json || {};\nconst personas  = items.find(i => i.json.buffett_score !== undefined)?.json || {};\n\n// Parse the AI agent output\nconst rawOutput = agentItem.output || agentItem.text || agentItem.response || agentItem.message || '';\n\nlet parsed = {};\ntry {\n  const cleaned = rawOutput.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  parsed = JSON.parse(cleaned);\n} catch(e) {\n  parsed = {\n    final_score: Math.round(((personas.buffett_score||50)+(personas.dalio_score||50)+(personas.lynch_score||50))/3),\n    verdict: 'HOLD',\n    persona_consensus: 'Parse error on final report',\n    executive_summary: 'Could not parse AI output. Raw: ' + rawOutput.substring(0, 300),\n    bull_case: '', bear_case: '',\n    key_catalysts: [], key_risks: [],\n    investment_thesis: '',\n    score_breakdown: {\n      buffett: personas.buffett_score||50,\n      dalio:   personas.dalio_score||50,\n      lynch:   personas.lynch_score||50\n    }\n  };\n}\n\nreturn {\n  // Core identifiers\n  ticker:           fin.ticker,\n  price:            fin.price,\n  intrinsic_value:  fin.intrinsic_value,\n  margin_of_safety: fin.margin_of_safety,\n  analyst_target:   fin.analyst_target,\n  analyst_upside:   fin.analyst_upside,\n  recommendation:   fin.recommendation,\n  num_analysts:     fin.num_analysts,\n  pe_ratio:         fin.pe_ratio,\n  roe:              fin.roe,\n  roa:              fin.roa,\n  week_change_52:   fin.week_change_52,\n\n  // Final AI report fields\n  final_score:       parsed.final_score,\n  verdict:           parsed.verdict,\n  persona_consensus: parsed.persona_consensus,\n  executive_summary: parsed.executive_summary,\n  bull_case:         parsed.bull_case,\n  bear_case:         parsed.bear_case,\n  key_catalysts:     parsed.key_catalysts,\n  key_risks:         parsed.key_risks,\n  investment_thesis: parsed.investment_thesis,\n  score_breakdown:   parsed.score_breakdown,\n\n  // Full persona reports\n  persona_reports: {\n    buffett: {\n      score:            personas.buffett_score,\n      verdict:          personas.buffett_verdict,\n      reasoning:        personas.buffett_reasoning,\n      positives:        personas.buffett_positives,\n      concerns:         personas.buffett_concerns,\n      moat:             personas.buffett_detail?.moat_assessment,\n      earnings_quality: personas.buffett_detail?.earnings_quality\n    },\n    dalio: {\n      score:         personas.dalio_score,\n      verdict:       personas.dalio_verdict,\n      reasoning:     personas.dalio_reasoning,\n      positives:     personas.dalio_positives,\n      concerns:      personas.dalio_concerns,\n      debt_risk:     personas.dalio_detail?.debt_risk_assessment,\n      balance_sheet: personas.dalio_detail?.balance_sheet_strength\n    },\n    lynch: {\n      score:          personas.lynch_score,\n      verdict:        personas.lynch_verdict,\n      reasoning:      personas.lynch_reasoning,\n      positives:      personas.lynch_positives,\n      concerns:       personas.lynch_concerns,\n      stock_category: personas.lynch_detail?.stock_category,\n      growth_story:   personas.lynch_detail?.growth_story\n    }\n  },\n\n  // Market sentiment data\n  market_data: {\n    sentiment_score: senti.market_sentiment_score,\n    sentiment_label: senti.market_sentiment_label,\n    fear_greed:      senti.fear_greed,\n    fg_class:        senti.fg_classification,\n    rsi:             senti.rsi_score,\n    volume_ratio:    senti.volume_ratio\n  },\n\n  generated_at: new Date().toISOString()\n};"
+      },
+      "id": "31091399-bdb1-47a6-a0c0-c75e075e4612",
+      "name": "Parse and Structure Final Report1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1392,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3-flash-preview",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -592,
+        -64
+      ],
+      "id": "ddcffee2-22db-46a7-9203-9b90207eb5af",
+      "name": "Google Gemini Chat Model4",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "lKL30vTwlndj58rZ",
+          "name": "Gemini Billing AC (LifeOS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3-flash-preview",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -592,
+        -464
+      ],
+      "id": "a44bdcd6-86d3-4971-9382-f54590234d3d",
+      "name": "Google Gemini Chat Model5",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "lKL30vTwlndj58rZ",
+          "name": "Gemini Billing AC (LifeOS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3-flash-preview",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -592,
+        448
+      ],
+      "id": "b155062f-41e8-4cca-b927-05979f1cbb64",
+      "name": "Google Gemini Chat Model6",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "lKL30vTwlndj58rZ",
+          "name": "Gemini Billing AC (LifeOS)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        896,
+        816
+      ],
+      "id": "0100a04e-d9b8-4497-9929-bd377e88cb28",
+      "name": "Google Gemini Chat Model7",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "XhH5Lsd6LamfeiSt",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        368,
+        448
+      ],
+      "id": "d637d85d-be9f-415c-a530-033606508aac",
+      "name": "Merge3"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1168,
+        464
+      ],
+      "id": "a591e0ce-8746-4bf9-b3c2-3e8f57169ebc",
+      "name": "Merge4"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json, null, 2) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "OPTIONS, GET, POST"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type, Authorization"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1552,
+        464
+      ],
+      "id": "472d6f91-2dac-4a94-b9a9-d95d476a8357",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "API Call - Statistics1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "API Call - Financials1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Fear And Greed",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP NSE Technical",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Fear And Greed": {
+      "main": [
+        [
+          {
+            "node": "Parse Fear Greed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP NSE Technical": {
+      "main": [
+        [
+          {
+            "node": "Parse Technical",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Statistics": {
+      "main": [
+        [
+          {
+            "node": "Merge Fundamentals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Financials": {
+      "main": [
+        [
+          {
+            "node": "Merge Fundamentals",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Parse Fear Greed": {
+      "main": [
+        [
+          {
+            "node": "Merge Sentiment Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Technical": {
+      "main": [
+        [
+          {
+            "node": "Merge Sentiment Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Fundamentals": {
+      "main": [
+        [
+          {
+            "node": "Normalize Data1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Sentiment Data": {
+      "main": [
+        [
+          {
+            "node": "Combine Sentiment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Combine Sentiment": {
+      "main": [
+        [
+          {
+            "node": "Normalize Sentiment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Sentiment": {
+      "main": [
+        [
+          {
+            "node": "Merge DCF + Sentiment",
+            "type": "main",
+            "index": 1
+          },
+          {
+            "node": "Merge3",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "DCF Calculator": {
+      "main": [
+        [
+          {
+            "node": "Merge DCF + Sentiment",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge3",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge DCF + Sentiment": {
+      "main": [
+        [
+          {
+            "node": "Inject Market Sentiment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Inject Market Sentiment": {
+      "main": [
+        [
+          {
+            "node": "Build AI Prompts1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Call - Statistics1": {
+      "main": [
+        [
+          {
+            "node": "Parse Statistics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API Call - Financials1": {
+      "main": [
+        [
+          {
+            "node": "Parse Financials",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Data1": {
+      "main": [
+        [
+          {
+            "node": "DCF Calculator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build AI Prompts1": {
+      "main": [
+        [
+          {
+            "node": "Route by Persona1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Persona1": {
+      "main": [
+        [
+          {
+            "node": "Buffett AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Dalio AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lynch AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buffett AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Parse Buffett Output1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dalio AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Parse Dalio Output1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lynch AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Parse Lynch Output1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Buffett Output1": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Dalio Output1": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Parse Lynch Output1": {
+      "main": [
+        [
+          {
+            "node": "Merge2",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Merge2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Merge3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Final Report Prompt1": {
+      "main": [
+        [
+          {
+            "node": "Final Report AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Report AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Merge4",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Parse and Structure Final Report1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Dalio AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model5": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Buffett AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model6": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Lynch AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model7": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Final Report AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge3": {
+      "main": [
+        [
+          {
+            "node": "Build Final Report Prompt1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge4": {
+      "main": [
+        [
+          {
+            "node": "Parse and Structure Final Report1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "966e0932-3c6d-4193-9ee5-158ab6e3aab1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "9dfa515be4367e18e0d5ab0cc9327c64042d717e0949c9a03056a31b05ba0fc3"
+  },
+  "id": "v8Esjge9lnjIhoz1",
+  "tags": []
+}
