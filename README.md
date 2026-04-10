@@ -66,7 +66,7 @@ Final Investment Report
 
 ## 🖼️ System Architecture
 
-![System Architecture](./img/system-flow.png)
+![System Architecture](./img/system-flow.jpeg)
 
 ---
 
@@ -141,7 +141,7 @@ Lynch:   35%
 
 ## 🖥️ Frontend Screenshots
 
-![Frontend UI](./img/frontend.png)
+![Frontend UI](./img/frontend.jpeg)
 
 ---
 
@@ -153,7 +153,7 @@ Lynch:   35%
 
 ## 📄 Final Report Output
 
-![Final Report](./img/report.png)
+![Final Report](./img/report.jpeg)
 
 ---
 
